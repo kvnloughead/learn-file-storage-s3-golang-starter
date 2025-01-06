@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,8 +65,17 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Create filepath
-	contentType := header.Header.Get("Content-Type")
-	ext :=  "." + strings.Split(contentType, "/")[1]
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to parse Content-Type header", nil)
+	}
+
+	if mediaType != "image/png" && mediaType != "image/jpeg" {
+		respondWithError(w, http.StatusBadRequest, "Thumbnail must be image/png or image/jpeg mime type", err)
+	}
+
+
+	ext :=  "." + strings.Split(mediaType, "/")[1]
 	filePath := filepath.Join(cfg.assetsRoot, videoIDString + ext)
 
 	// Create file on server and copy multipart data to it
