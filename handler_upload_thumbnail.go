@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -45,14 +47,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	// mediaType := header.Header.Get("Content-Type")
-
-	// fileData, err := io.ReadAll(file)
-	// if err != nil {
-	// 	respondWithError(w, http.StatusInternalServerError, "Unable to read file", err)
-	// 	return
-	// }
-
 	metadata, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to get video metadata", err)
@@ -74,19 +68,25 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Thumbnail must be image/png or image/jpeg mime type", err)
 	}
 
-
+	// Build filename of the form /assets/randomBase64.ext
 	ext :=  "." + strings.Split(mediaType, "/")[1]
-	filePath := filepath.Join(cfg.assetsRoot, videoIDString + ext)
+	b := make([]byte, 32)
+	_, err = rand.Read(b)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to upload thumbnail", err)
+	}
+	basename := base64.RawURLEncoding.EncodeToString(b)
+	filePath := filepath.Join(cfg.assetsRoot, basename + ext)
 
 	// Create file on server and copy multipart data to it
 	assetFile, err := os.Create(filePath)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Unable to create thumbnail file", err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to upload thumbnail", err)
 	}
 	io.Copy(assetFile, file)
 
 	// Update thumbnail URL in metadata and save to DB
-	thumbnailUrl := fmt.Sprintf("http://localhost:8091/assets/%s", videoIDString + ext)
+	thumbnailUrl := fmt.Sprintf("http://localhost:8091/%s",  filePath)
 	metadata.ThumbnailURL = &thumbnailUrl
 	cfg.db.UpdateVideo(metadata)
 	
