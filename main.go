@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 
 	"github.com/joho/godotenv"
@@ -20,6 +24,7 @@ type apiConfig struct {
 	s3Bucket         string
 	s3Region         string
 	s3CfDistribution string
+	s3Client         *s3.Client
 	port             string
 }
 
@@ -76,6 +81,17 @@ func main() {
 		log.Fatal("S3_CF_DISTRO environment variable is not set")
 	}
 
+	if s3Bucket == "" || s3Region == "" || s3CfDistribution == "" {
+		log.Fatal("Required environment variables are not set (S3_BUCKET, S3_REGION, S3_CF_DISTRO)")
+	}
+
+	// Load the default AWS configuration and create a new S3 client using it.
+	s3Config, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(s3Region))
+	if err != nil {
+		panic(fmt.Sprintf("failed loading s3 config, %v", err))
+	}
+	s3Client := s3.NewFromConfig(s3Config)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		log.Fatal("PORT environment variable is not set")
@@ -90,6 +106,7 @@ func main() {
 		s3Bucket:         s3Bucket,
 		s3Region:         s3Region,
 		s3CfDistribution: s3CfDistribution,
+		s3Client:         s3Client,
 		port:             port,
 	}
 
