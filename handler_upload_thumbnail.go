@@ -68,7 +68,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Build filename of the form /assets/randomBase64.ext
-	filePath, err := cfg.getFilename(w, mediaType)
+	filePath, err := cfg.getFilename(mediaType)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload file", err)
 		return

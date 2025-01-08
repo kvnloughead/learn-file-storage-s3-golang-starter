@@ -91,7 +91,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Unable to reset pointer", nil)
 	}
 
-	key, err := cfg.getFilename(w, mediaType)
+	key, err := cfg.getFilename(mediaType)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to s3", err)
 		return
