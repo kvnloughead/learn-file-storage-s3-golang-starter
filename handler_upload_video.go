@@ -15,6 +15,20 @@ import (
 	"github.com/google/uuid"
 )
 
+// handlerUploadVideo handles HTTP requests for uploading video files.
+// It validates the user's JWT token, checks video ownership, saves the
+// uploaded file to a temporary location, determines the aspect ratio, and
+// uploads the video to S3.
+//
+// The video URL is then stored separately with the metadata in sqlite database.
+//
+// The handler expects:
+// - A video ID in the URL path
+// - A JWT token in the Authorization header
+// - A multipart form with a "video" field containing an MP4 file
+//
+// Returns HTTP 400 for invalid requests, 401 for unauthorized access,
+// and 500 for internal server errors.
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
@@ -91,11 +105,27 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Unable to reset pointer", nil)
 	}
 
+	// Create random file key for storing in s3
 	key, err := cfg.getFilename(mediaType)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to s3", err)
 		return
 	}
+
+	// Get aspect ratio of video (16:9, 9:16, or other)
+	aspectRatio, err := getVideoAspectRatio(tmpFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error(), err)
+	}
+
+	// Get prefix for storing in s3 based on aspect ratio and add it to the key
+	prefixes := map[string]string{
+		"16:9":  "landscape",
+		"9:16":  "portrait",
+		"other": "other",
+	}
+	prefix := prefixes[aspectRatio]
+	key = prefix + "/" + key
 
 	// Upload video to S3
 	_, err = cfg.s3Client.PutObject(context.Background(), &s3.PutObjectInput{
@@ -107,13 +137,6 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to S3", err)
 	}
-
-	aspectRatio, err := getVideoAspectRatio(tmpFile.Name())
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error(), err)
-	}
-
-	fmt.Println(aspectRatio)
 
 	// Update video metadata in DB
 	videoUrl := (&url.URL{
