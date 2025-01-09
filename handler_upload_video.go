@@ -108,6 +108,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to S3", err)
 	}
 
+	aspectRatio, err := getVideoAspectRatio(tmpFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error(), err)
+	}
+
+	fmt.Println(aspectRatio)
+
 	// Update video metadata in DB
 	videoUrl := (&url.URL{
 		Scheme: "https",
