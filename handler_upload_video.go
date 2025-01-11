@@ -6,7 +6,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -115,7 +114,8 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	// Get aspect ratio of video (16:9, 9:16, or other)
 	aspectRatio, err := getVideoAspectRatio(tmpFile.Name())
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error(), err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to s3", err)
+		return
 	}
 
 	// Get prefix for storing in s3 based on aspect ratio and add it to the key
@@ -127,14 +127,24 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	prefix := prefixes[aspectRatio]
 	key = prefix + "/" + key
 
+	// Add the video to the DB. The VideoURL field is of the form "bucket,key"
+	videoUrl := cfg.s3Bucket + "," + key
+	metadata.VideoURL = &videoUrl
+	cfg.db.UpdateVideo(metadata)
+
+	// Update video with presigned URL
+	metadata, err = cfg.dbVideoToSignedVideo(metadata)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to s3", err)
+		return
+	}
+
 	// Process video for a fast start with ffmpeg
 	processedFilePath, err := processVideoForFastStart(tmpFile.Name())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to s3", err)
 		return
 	}
-
-	fmt.Println("fp", processedFilePath)
 	processedFile, err := os.Open(processedFilePath)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to s3", err)
@@ -153,13 +163,4 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to S3", err)
 	}
-
-	// Update video metadata in DB
-	videoUrl := (&url.URL{
-		Scheme: "https",
-		Host:   fmt.Sprintf("%s.s3.%s.amazonaws.com", cfg.s3Bucket, cfg.s3Region),
-		Path:   key,
-	}).String()
-	metadata.VideoURL = &videoUrl
-	cfg.db.UpdateVideo(metadata)
 }

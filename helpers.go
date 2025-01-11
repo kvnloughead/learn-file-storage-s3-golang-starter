@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -9,6 +10,10 @@ import (
 	"math"
 	"os/exec"
 	"strings"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 )
 
 // getFilename creates a unique filename for a multipart form file.
@@ -114,4 +119,55 @@ func processVideoForFastStart(filePath string) (string, error) {
 
 	// Return the path to the processed file
 	return outputPath, nil
+}
+
+// generatePresignedURL uses s3PresignClient to generate a presigned URL for
+// the provided bucket, key, and expiration. It returns the presigned URL and
+// an error if the correpsonding presigned request can't be created.
+func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
+	s3PresignClient := s3.NewPresignClient(s3Client)
+
+	presignedReq, err := s3PresignClient.PresignGetObject(
+		context.TODO(),
+		&s3.GetObjectInput{
+			Bucket: &bucket,
+			Key:    &key},
+		s3.WithPresignExpires(expireTime),
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	return presignedReq.URL, nil
+}
+
+// dbVideoToSignedVideo prepares a video for sending to a client by generating
+// a presigned URL for it. If the video document is in draft form, it will not
+// have a VideoURL property. In that case, the function returns the original
+// video document.
+//
+// The video's VideoURL property is replaced with this signed URL and is
+// returned.
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	if video.VideoURL != nil {
+
+		parts := strings.Split(*video.VideoURL, ",")
+		if len(parts) != 2 {
+			return database.Video{}, fmt.Errorf("invalid video URL format: expected bucket,key got %s", *video.VideoURL)
+		}
+
+		bucket := parts[0]
+		key := parts[1]
+
+		signedURL, err := generatePresignedURL(cfg.s3Client, bucket, key, time.Hour)
+		if err != nil {
+			return database.Video{}, err
+		}
+
+		video.VideoURL = &signedURL
+		return video, nil
+	}
+
+	return video, nil
 }
