@@ -92,3 +92,26 @@ func getVideoAspectRatio(filepath string) (string, error) {
 	}
 	return "other", nil
 }
+
+// processVideoForFastStart accepts an mp4 filepath string as an argument and
+// uses ffmpeg to process it for a fast start by moving its moov atom the
+// beginning of the file.
+//
+// It returns the output filepath (which is originalPath.processed) and an
+// error.
+func processVideoForFastStart(filePath string) (string, error) {
+	outputPath := filePath + ".processed"
+
+	cmd := exec.Command("ffmpeg", "-i", filePath, "-c", "copy", "-movflags", "faststart", "-f", "mp4", outputPath)
+
+	// Capture stderr for potential error messages
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("ffmpeg error: %v, stderr: %s", err, stderr.String())
+	}
+
+	// Return the path to the processed file
+	return outputPath, nil
+}
